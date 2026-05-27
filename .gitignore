@@ -56,6 +56,9 @@ Thumbs.db
 .claude/
 .qodo/
 
+# ── Assignment brief (kept local only) ───────────────────────────────────────
+*.pdf
+
 # ── Secrets ───────────────────────────────────────────────────────────────────
 *.key
 secrets.json
