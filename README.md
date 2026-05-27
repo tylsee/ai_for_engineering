@@ -56,13 +56,13 @@ drive.mount('/content/drive')
 
 **Step 3 — Clone the repo into Drive (first time only)**
 ```bash
-# First time only — cloning INTO Drive keeps weights safe across sessions
-!git clone https://github.com/tylsee/ai_for_engineering /content/drive/MyDrive/ai_for_engineering
+# First time only — creates COS40007/ai_for_engineering/ inside your Drive
+!git clone https://github.com/tylsee/ai_for_engineering /content/drive/MyDrive/COS40007/ai_for_engineering
 ```
 
 Every session after that, just navigate to it:
 ```python
-%cd /content/drive/MyDrive/ai_for_engineering
+%cd /content/drive/MyDrive/COS40007/ai_for_engineering
 !git pull origin main   # get latest changes from teammates
 ```
 
