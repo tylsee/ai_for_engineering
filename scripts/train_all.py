@@ -23,6 +23,21 @@ CLASSES     = ['cracks', 'spalling', 'corrosion', 'potholes', 'paint_degradation
 NUM_CLASSES = len(CLASSES) + 1   # +1 for background
 DATA_YAML   = str(DATA_DIR / 'data.yaml')
 
+# Rewrite data.yaml with the correct absolute path for this machine.
+# The committed data.yaml may contain a hardcoded path from a different OS/machine.
+def _write_data_yaml():
+    content = (
+        f"path: {DATA_DIR.as_posix()}\n"
+        f"train: images/train\n"
+        f"val: images/val\n"
+        f"test: images/test\n"
+        f"nc: {len(CLASSES)}\n"
+        f"names: {CLASSES}\n"
+    )
+    (DATA_DIR / 'data.yaml').write_text(content)
+
+_write_data_yaml()
+
 YOLO_EPOCHS  = 100
 TORCH_EPOCHS = 30
 YOLO_BATCH   = 8
