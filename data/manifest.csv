@@ -1,0 +1,4 @@
+source,total,train,val,test
+wall_crack,959,671,144,144
+road_damage,1657,1159,249,249
+concrete_structural,2010,1407,301,302

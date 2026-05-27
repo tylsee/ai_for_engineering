@@ -1,0 +1,61 @@
+# ── Raw source datasets (GBs, stored on Google Drive) ────────────────────────
+dataset/
+
+# ── Augmented images (generated output, recreated by scripts/02_augmentation.py) ─
+data/augmented/
+
+# ── Pretrained base weights (auto-downloaded by Ultralytics on first run) ─────
+yolo11n.pt
+yolov8n.pt
+*.onnx
+*.engine
+
+# ── Old model weights from abandoned architectures (too large for GitHub) ─────
+runs/resnet50/
+runs/efficientnet/
+
+# ── Incomplete / in-progress training runs (only push completed versions) ─────
+# Delete or rename these manually if a run is incomplete before pushing
+runs/yolo11n/v2/
+runs/yolov8n/v2/
+runs/ssdlite/best_v2.pth
+
+# ── last.pt checkpoints (only best.pt is needed by teammates) ─────────────────
+runs/**/weights/last.pt
+
+# ── YOLO per-epoch training batch previews (large, not useful in repo) ────────
+runs/**/train_batch*.jpg
+
+# ── Large training logs ───────────────────────────────────────────────────────
+runs/train_log.txt
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
+*.egg-info/
+dist/
+build/
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env
+
+# ── Editor & OS ───────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Tool config (local only) ──────────────────────────────────────────────────
+.claude/
+.qodo/
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+*.key
+secrets.json
