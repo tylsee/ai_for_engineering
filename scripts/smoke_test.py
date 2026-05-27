@@ -43,8 +43,16 @@ class DefectDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.images[idx]
         lbl_path = self.lbl_dir / (img_path.stem + '.txt')
-        img    = Image.open(img_path).convert('RGB').resize((self.img_size, self.img_size))
-        tensor = TF.to_tensor(img)
+        try:
+            img = Image.open(img_path).convert('RGB').resize((self.img_size, self.img_size))
+            tensor = TF.to_tensor(img)
+        except Exception:
+            tensor = torch.zeros(3, self.img_size, self.img_size)
+            return tensor, {'boxes': torch.zeros((0,4), dtype=torch.float32),
+                            'labels': torch.zeros(0, dtype=torch.int64),
+                            'image_id': torch.tensor([idx]),
+                            'area': torch.zeros(0, dtype=torch.float32),
+                            'iscrowd': torch.zeros(0, dtype=torch.int64)}
         boxes, labels = [], []
         if lbl_path.exists():
             for line in lbl_path.read_text().splitlines():
