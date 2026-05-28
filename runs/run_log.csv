@@ -1,2 +1,5 @@
 run_id,model,backbone,epochs,batch_size,img_size,lr,map50,map50_95,precision,recall,train_time_min,params_M,weights_path,notes
 YOLOv11n_1779871528,YOLOv11n,,100,2,640,0.0001,0.7634,0.6651,0.7287,0.7189,344.0,2.58,runs/yolo11n/v1/weights/best.pt,
+YOLOv8n_v1_1748374449,YOLOv8n,v1,91,8,640,0.0001,0.7636,0.6669,0.7499,0.7087,334.0,3.16,runs/yolov8n/v1/weights/best.pt,
+YOLOv8n_v1_resume_1779911165,YOLOv8n,v1_resume,100,8,640,0.0001,0.7584,0.6678,0.714,0.7132,27.4,3.01,runs\yolov8n\v1\weights\best.pt,resumed from epoch 91
+ssdlite_v1_1779922217,ssdlite,1,30,2,640,0.0001,0.2091,0.1888,0.0,0.0,177.6,3.78,C:\dev\ai_for_engineering\runs\ssdlite\best_v1.pth,

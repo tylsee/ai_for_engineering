@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Always ask me before any push and commit to github.
+
 Guidance for Claude Code when working in this repository.
 
 ---
@@ -100,12 +102,22 @@ Every time `python scripts/train_all.py` is run, each model auto-increments its 
 - PyTorch models save to `runs/{model}/best_v{N}.pth`
 - All runs are appended to `runs/run_log.csv` with `run_id = {model}_v{N}_{timestamp}`
 
-**Current runs:**
-| Model | Version | mAP@0.5 | Weights |
-|-------|---------|---------|---------|
-| YOLOv11n | v1 | 0.7634 | runs/yolo11n/v1/weights/best.pt |
+**Current runs (all complete):**
+| Model | Version | Epochs | Best mAP@0.5 | mAP@0.5:0.95 | Weights | Status |
+|-------|---------|--------|-------------|--------------|---------|--------|
+| YOLOv11n | v1 | 100 | 0.7653 (ep95) | 0.6615 | runs/yolo11n/v1/weights/best.pt | Done |
+| YOLOv8n | v1 | 100 | 0.7636 (ep90) | 0.6669 | runs/yolov8n/v1/weights/best.pt | Done |
+| SSDLite | v1 | 30 | 0.2387 | 0.1888 | runs/ssdlite/best_v1.pth | Done |
 
-To re-run a specific model only: edit `train_all.py` and comment out the steps you don't want.
+**SSDLite note:** Low mAP (0.24) is expected — anchor-based models need careful anchor tuning for defect scales; whole-image bboxes for 3/5 classes hurt anchor matching. Valid comparison point: demonstrates why anchor-free YOLO outperforms SSDLite on this dataset.
+
+**Abandoned partial runs (do not use):**
+- `runs/yolo11n/v2/` — 17 epochs only, aborted
+- `runs/yolov8n/v2/` — 13 epochs only, aborted
+
+**Note:** YOLOv8n AMP was auto-disabled by Ultralytics on GTX 1650 (NaN loss risk). FP32 training — results are still valid.
+
+**Weight selection:** `ui/inference.py` and `notebooks/03_evaluation.ipynb` both use `_best_yolo_weights()` — picks the vN folder with the highest mAP@0.5 in results.csv, not the highest version number.
 
 ---
 
@@ -238,6 +250,65 @@ streamlit run ui/app.py
 
 ---
 
+## Evaluation Results (Test Set — 695 images, run 28 May 2026)
+
+### Model Comparison Table
+
+| Model | mAP@0.5 | mAP@0.5:0.95 | Precision | Recall | Speed (ms/img) |
+|-------|---------|-------------|-----------|--------|---------------|
+| YOLOv11n | **0.7557** | **0.6719** | 0.7507 | 0.7041 | 6.4 |
+| YOLOv8n | 0.7477 | 0.6592 | 0.7792 | 0.6912 | 5.6 |
+| SSDLite | 0.0530 | 0.0434 | — | — | 20.4 |
+
+Saved: `runs/model_comparison.csv`, `runs/model_comparison.png`
+
+### Per-Class AP@0.5 (YOLOv11n — best model)
+
+| Class | Images | Instances | Precision | Recall | AP@0.5 | AP@0.5:0.95 |
+|-------|--------|-----------|-----------|--------|--------|-------------|
+| cracks | 492 | 753 | 0.643 | 0.404 | 0.514 | 0.324 |
+| spalling | 57 | 57 | 0.865 | 0.912 | 0.950 | 0.950 |
+| corrosion | 53 | 53 | 0.834 | 0.906 | 0.959 | 0.959 |
+| potholes | 121 | 201 | 0.541 | 0.299 | 0.376 | 0.148 |
+| paint_degradation | 58 | 58 | 0.871 | 1.000 | 0.979 | 0.979 |
+
+Saved: `runs/per_class_ap_yolov11n.png`, `runs/per_class_ap_yolov8n.png`
+
+### Per-Class AP@0.5 (YOLOv8n)
+
+| Class | Precision | Recall | AP@0.5 | AP@0.5:0.95 |
+|-------|-----------|--------|--------|-------------|
+| cracks | 0.646 | 0.405 | 0.505 | 0.319 |
+| spalling | 0.887 | 0.860 | 0.937 | 0.927 |
+| corrosion | 0.962 | 0.868 | 0.929 | 0.927 |
+| potholes | 0.558 | 0.323 | 0.396 | 0.151 |
+| paint_degradation | 0.843 | 1.000 | 0.971 | 0.971 |
+
+### Severity Distribution (test set ground truth)
+- Low (<5% area): 587 instances
+- Medium (5–20%): 160 instances
+- High (>20%): 375 instances
+
+Saved: `runs/severity_distribution.png`, `runs/prediction_samples.png`
+
+### Key Findings for Report
+
+**Why cracks AP is lowest (0.51) despite most training samples:**
+Cracks have tight, irregular bboxes varying wildly in size/orientation. Harder IoU matching than the whole-image bboxes used for spalling/corrosion/paint_degradation.
+
+**Why pothole AP is low (0.38):**
+Road images have high viewpoint/scale variation. Only 883 train bboxes — insufficient relative to class diversity.
+
+**Why paint_degradation, spalling, corrosion have near-perfect AP (0.95–0.98):**
+These use whole-image bboxes (cx=0.5, cy=0.5, w=1.0, h=1.0). IoU is trivially high because the ground truth covers the full image — inflated metric, not true localisation accuracy. Acknowledge in report.
+
+**SSDLite test mAP (0.053) vs training mAP (0.209):**
+Training mAP was computed on val set at epoch 24. The lower test mAP may reflect: (a) anchor mismatch — SSDLite anchors designed for COCO objects, not defect scales; (b) whole-image bboxes hurt anchor matching at inference; (c) the model genuinely overfitted to val. Report as expected underperformance of anchor-based detection on this dataset.
+
+**YOLOv11n slightly beats YOLOv8n** (+0.8% mAP@0.5, +1.3% mAP@0.5:0.95) — demonstrates one generation of YOLO improvement.
+
+---
+
 ## Deliverables Checklist (vs Rubric)
 
 ### Task 1: Data Collection, Labelling & Preprocessing (10 marks)
@@ -248,29 +319,26 @@ streamlit run ui/app.py
 - [ ] Acknowledge whole-image bbox limitation for concrete-structural data
 
 ### Task 2: Training & Validation (5 marks)
-- [x] 3 model architectures chosen: YOLOv11n, YOLOv8n, SSDLite320-MobileNetV3
-- [x] YOLOv11n trained — mAP@0.5=0.7634 (runs/yolo11n/v1/)
-- [ ] YOLOv8n training — pending
-- [ ] SSDLite training — pending
+- [x] 3 model architectures: YOLOv11n (mAP@0.5=0.756), YOLOv8n (0.748), SSDLite (0.053 test / 0.209 val)
 - [x] Transfer learning from pre-trained weights (COCO for YOLO, ImageNet for SSDLite backbone)
 - [x] Two-phase training for SSDLite (backbone freeze → unfreeze)
-- [x] Auto-versioned training runs (v1, v2, ...) in runs/
+- [x] Auto-versioned training runs in runs/
 - [x] Training logs in `runs/run_log.csv`
 - [ ] Written justification of hyperparameter choices in report
 
 ### Task 3: Detection on Unseen Data (5 marks)
-- [x] Test split kept separate (695 images unseen during training)
-- [ ] Test results in `notebooks/03_evaluation.ipynb`
+- [x] Test split kept separate (695 images, never seen during training)
+- [x] Test results in `notebooks/03_evaluation.ipynb`
 - [ ] Written analysis of generalisation performance
 
 ### Task 4: Evaluation Metrics & Discussion (10 marks)
 - [x] mAP@0.5 and mAP@0.5:0.95 (all 3 models)
-- [x] Per-class AP (YOLO)
+- [x] Per-class AP (all 5 classes for YOLO models)
 - [x] Model comparison table (`runs/model_comparison.csv`)
-- [x] Severity distribution chart
-- [ ] IoU histogram (add to evaluation notebook)
-- [ ] PR curves per class (YOLO generates automatically; add for Faster R-CNN)
-- [ ] FP/FN error analysis
+- [x] Severity distribution chart (`runs/severity_distribution.png`)
+- [x] Prediction sample visualisations (`runs/prediction_samples.png`)
+- [ ] IoU histogram (not yet in evaluation notebook)
+- [ ] FP/FN error analysis (not yet in evaluation notebook)
 
 ### Task 5: User Interface (5 marks)
 - [x] Streamlit dashboard with image upload

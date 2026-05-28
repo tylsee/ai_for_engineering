@@ -1,6 +1,6 @@
 """
 Inference helpers used by the Streamlit UI.
-Supports YOLO (Ultralytics), ResNet-50 Faster R-CNN, and EfficientNet-B0 Faster R-CNN.
+Supports YOLOv11n, YOLOv8n (Ultralytics) and SSDLite320-MobileNetV3 (torchvision).
 """
 
 from __future__ import annotations
@@ -27,7 +27,47 @@ CLASS_COLORS = [
     (155, 89,182),    # purple — paint_degradation
 ]
 
-ModelType = Literal['YOLOv11n', 'ResNet50', 'EfficientNetB0']
+ModelType = Literal['YOLOv11n', 'YOLOv8n', 'SSDLite']
+
+
+def _best_yolo_weights(model_dir: Path) -> Path:
+    """Return best.pt from the vN folder with the highest mAP@0.5 in results.csv.
+    Falls back to the highest-numbered version if no results.csv has data."""
+    import csv as _csv
+    versions = sorted(
+        [d for d in model_dir.iterdir() if d.is_dir() and d.name.startswith('v')],
+        key=lambda d: int(d.name[1:])
+    )
+    if not versions:
+        raise FileNotFoundError(f'No training runs found in {model_dir}')
+    best_ver, best_map = versions[-1], -1.0
+    for v in versions:
+        results = v / 'results.csv'
+        if not results.exists() or results.stat().st_size == 0:
+            continue
+        try:
+            with open(results) as f:
+                rows = list(_csv.DictReader(f))
+            if not rows:
+                continue
+            map50s = [float(r.get('metrics/mAP50(B)', 0)) for r in rows]
+            v_best = max(map50s)
+            if v_best > best_map:
+                best_map, best_ver = v_best, v
+        except Exception:
+            continue
+    return best_ver / 'weights' / 'best.pt'
+
+
+def _latest_torch_weights(model_dir: Path) -> Path:
+    """Return the highest-numbered best_vN.pth file."""
+    ckpts = sorted(
+        model_dir.glob('best_v*.pth'),
+        key=lambda p: int(p.stem.split('_v')[1])
+    )
+    if not ckpts:
+        raise FileNotFoundError(f'No checkpoints found in {model_dir}')
+    return ckpts[-1]
 
 
 @dataclass
@@ -53,29 +93,31 @@ def _compute_severity(x1: float, y1: float, x2: float, y2: float,
 
 
 def load_model(model_type: ModelType, device: torch.device):
-    """Loads the trained model for the given type. Returns (model, model_type) tuple."""
+    """Loads the trained model for the given type. Returns (model, backend) tuple."""
     runs = PROJECT_ROOT / 'runs'
 
     if model_type == 'YOLOv11n':
         from ultralytics import YOLO
-        weights = runs / 'yolo' / 'exp1' / 'weights' / 'best.pt'
+        weights = _best_yolo_weights(runs / 'yolo11n')
         if not weights.exists():
-            raise FileNotFoundError(f'YOLO weights not found: {weights}')
+            raise FileNotFoundError(f'YOLOv11n weights not found: {weights}')
         return YOLO(str(weights)), 'yolo'
 
-    if model_type == 'ResNet50':
-        from models.resnet_detector import load_checkpoint
-        weights = runs / 'resnet50' / 'best.pth'
+    if model_type == 'YOLOv8n':
+        from ultralytics import YOLO
+        weights = _best_yolo_weights(runs / 'yolov8n')
         if not weights.exists():
-            raise FileNotFoundError(f'ResNet50 weights not found: {weights}')
-        return load_checkpoint(str(weights), device), 'torchvision'
+            raise FileNotFoundError(f'YOLOv8n weights not found: {weights}')
+        return YOLO(str(weights)), 'yolo'
 
-    if model_type == 'EfficientNetB0':
-        from models.efficientnet_detector import load_checkpoint
-        weights = runs / 'efficientnet' / 'best.pth'
-        if not weights.exists():
-            raise FileNotFoundError(f'EfficientNet weights not found: {weights}')
-        return load_checkpoint(str(weights), device), 'torchvision'
+    if model_type == 'SSDLite':
+        from models.ssdlite_detector import build_model
+        weights = _latest_torch_weights(runs / 'ssdlite')
+        model = build_model(num_classes=6, pretrained=False).to(device)
+        ckpt = torch.load(str(weights), map_location=device)
+        model.load_state_dict(ckpt['model_state_dict'])
+        model.eval()
+        return model, 'torchvision'
 
     raise ValueError(f'Unknown model type: {model_type}')
 

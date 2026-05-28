@@ -137,7 +137,7 @@ def collate_fn(batch): return tuple(zip(*batch))
 def make_loader(split, batch_size=TORCH_BATCH, shuffle=False):
     ds = DefectDataset(DATA_DIR/'images'/split, DATA_DIR/'labels'/split)
     return DataLoader(ds, batch_size=batch_size, shuffle=shuffle,
-                      collate_fn=collate_fn, num_workers=0)
+                      collate_fn=collate_fn, num_workers=0, drop_last=shuffle)
 
 
 # ── Training helpers ──────────────────────────────────────────────────────────
@@ -206,7 +206,7 @@ def train_torch_model(model, model_name, train_loader, val_loader):
     best_ckpt = ckpt_dir / f'best_v{version}.pth'
 
     params_m = sum(p.numel() for p in model.parameters()) / 1e6
-    print(f"{model_name} params: {params_m:.1f}M  →  saving to {best_ckpt.name}")
+    print(f"{model_name} params: {params_m:.1f}M -> saving to {best_ckpt.name}")
 
     # Phase 1: freeze backbone
     for p in model.backbone.parameters(): p.requires_grad = False
@@ -344,7 +344,8 @@ if __name__ == '__main__':
     print("=" * 60)
     if (RUNS_DIR / 'run_log.csv').exists():
         df   = pd.read_csv(RUNS_DIR/'run_log.csv')
-        cols = ['model', 'version', 'epochs', 'map50', 'map50_95', 'train_time_min', 'params_M']
+        available = ['model', 'backbone', 'epochs', 'map50', 'map50_95', 'train_time_min', 'params_M']
+        cols = [c for c in available if c in df.columns]
         print(df[cols].to_string(index=False))
     else:
         print("No completed runs in run_log.csv yet.")

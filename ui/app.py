@@ -73,8 +73,8 @@ with st.sidebar:
     st.title('⚙️ Settings')
     model_choice = st.selectbox(
         'Detection model',
-        ['YOLOv11n', 'ResNet50', 'EfficientNetB0'],
-        help='YOLOv11n is fastest; ResNet50 is most accurate.'
+        ['YOLOv11n', 'YOLOv8n', 'SSDLite'],
+        help='YOLOv11n/v8n: anchor-free YOLO. SSDLite: anchor-based mobile model.'
     )
     conf_thresh = st.slider('Confidence threshold', 0.1, 0.9, 0.25, 0.05)
     st.divider()
@@ -176,7 +176,7 @@ Low: < 5% | Medium: 5–20% | High: > 20%
 ### Models
 | Model | Architecture | Backbone |
 |-------|-------------|---------|
-| YOLOv11n | One-stage anchor-free | CSPDarkNet (ImageNet) |
-| ResNet50 | Faster R-CNN | ResNet-50 FPN (COCO) |
-| EfficientNetB0 | Faster R-CNN | EfficientNet-B0 (ImageNet) |
+| YOLOv11n | One-stage anchor-free | CSPDarkNet (COCO) |
+| YOLOv8n | One-stage anchor-free | CSPDarkNet (COCO) |
+| SSDLite | One-stage anchor-based | MobileNetV3-Large (ImageNet) |
 """)

@@ -29,6 +29,15 @@ runs/**/train_batch*.jpg
 # ── Large training logs ───────────────────────────────────────────────────────
 runs/train_log.txt
 
+# ── YOLO inference/detection output (generated at runtime) ───────────────────
+runs/detect/
+
+# ── Notebook-generated run artifacts ─────────────────────────────────────────
+notebooks/runs/
+
+# ── YOLO label cache files (auto-generated, machine-specific) ────────────────
+data/labels/*.cache
+
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
