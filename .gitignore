@@ -1,16 +1,16 @@
-# ── Raw source datasets (GBs, stored on Google Drive) ────────────────────────
+# ── Raw source datasets (GBs, stored on Google Drive)
 dataset/
 
-# ── Augmented images (generated output, recreated by scripts/02_augmentation.py) ─
+# ── Augmented images (generated output, recreated by scripts/02_augmentation.py)
 data/augmented/
 
-# ── Pretrained base weights (auto-downloaded by Ultralytics on first run) ─────
+# ── Pretrained base weights (auto-downloaded by Ultralytics on first run) 
 yolo11n.pt
 yolov8n.pt
 *.onnx
 *.engine
 
-# ── Old model weights from abandoned architectures (too large for GitHub) ─────
+# ── Old model weights from abandoned architectures (too large for GitHub) 
 runs/resnet50/
 runs/efficientnet/
 
