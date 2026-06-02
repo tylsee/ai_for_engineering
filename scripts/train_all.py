@@ -274,7 +274,7 @@ if __name__ == '__main__':
 
         v11_ver = next_yolo_version('yolo11n')
         print(f"YOLOv11n → saving to runs/yolo11n/v{v11_ver}")
-        yolo11 = YOLO('yolo11n.pt')
+        yolo11 = YOLO(str(PROJECT_ROOT / 'weights' / 'yolo11n.pt'))
         t0     = time.time()
         yolo11.train(data=DATA_YAML, epochs=YOLO_EPOCHS, imgsz=IMG_SIZE,
                      batch=YOLO_BATCH, lr0=LR,
@@ -303,7 +303,7 @@ if __name__ == '__main__':
 
         v8_ver = next_yolo_version('yolov8n')
         print(f"YOLOv8n → saving to runs/yolov8n/v{v8_ver}")
-        yolo8  = YOLO('yolov8n.pt')
+        yolo8  = YOLO(str(PROJECT_ROOT / 'weights' / 'yolov8n.pt'))
         t0     = time.time()
         yolo8.train(data=DATA_YAML, epochs=YOLO_EPOCHS, imgsz=IMG_SIZE,
                     batch=YOLO_BATCH, lr0=LR,

@@ -1,4 +1,7 @@
 source,total,train,val,test
-wall_crack,959,671,144,144
-road_damage,1657,1159,249,249
-concrete_structural,2010,1407,301,302
+corrosion,1999,1399,300,300
+paint_degradation,1444,1010,217,217
+pothole_rf,427,302,61,64
+road_damage,918,646,139,133
+spalling,1292,904,194,194
+wall_crack,342,232,53,57

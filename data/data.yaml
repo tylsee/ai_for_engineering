@@ -3,4 +3,9 @@ train: images/train
 val: images/val
 test: images/test
 nc: 5
-names: ['cracks', 'spalling', 'corrosion', 'potholes', 'paint_degradation']
+names:
+- cracks
+- spalling
+- corrosion
+- potholes
+- paint_degradation

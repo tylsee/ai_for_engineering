@@ -29,6 +29,77 @@ CLASS_COLORS = [
 
 ModelType = Literal['YOLOv11n', 'YOLOv8n', 'SSDLite']
 
+# Maps the UI model name to its runs/ subfolder.
+MODEL_DIRS: dict[str, str] = {
+    'YOLOv11n': 'yolo11n',
+    'YOLOv8n':  'yolov8n',
+    'SSDLite':  'ssdlite',
+}
+
+
+def _yolo_version_map50(version_dir: Path) -> float | None:
+    """Best mAP@0.5 recorded in a YOLO run's results.csv, or None."""
+    import csv as _csv
+    results = version_dir / 'results.csv'
+    if not results.exists() or results.stat().st_size == 0:
+        return None
+    try:
+        with open(results) as f:
+            vals = [float(r.get('metrics/mAP50(B)', 0)) for r in _csv.DictReader(f)]
+        return max(vals) if vals else None
+    except Exception:
+        return None
+
+
+def _ssd_version_map50(version_num: str) -> float | None:
+    """mAP@0.5 for an SSDLite version, looked up in runs/run_log.csv."""
+    log = PROJECT_ROOT / 'runs' / 'run_log.csv'
+    if not log.exists():
+        return None
+    import csv as _csv
+    try:
+        with open(log) as f:
+            for r in _csv.DictReader(f):
+                if (r.get('model', '').lower() == 'ssdlite'
+                        and str(r.get('version')) == str(version_num)):
+                    return float(r.get('map50', 0))
+    except Exception:
+        return None
+    return None
+
+
+def list_versions(model_type: ModelType) -> list[tuple[str, str | None]]:
+    """Returns [(label, weights_path_or_None)] for the UI version dropdown.
+    The first entry is always ('Best (auto)', None), which defers to the
+    automatic best-version selection in load_model(). Subsequent entries are
+    concrete trained runs (newest last), annotated with mAP@0.5 when known."""
+    out: list[tuple[str, str | None]] = [('Best (auto)', None)]
+    model_dir = PROJECT_ROOT / 'runs' / MODEL_DIRS[model_type]
+    if not model_dir.exists():
+        return out
+
+    if model_type in ('YOLOv11n', 'YOLOv8n'):
+        versions = sorted(
+            [d for d in model_dir.iterdir() if d.is_dir() and d.name.startswith('v')],
+            key=lambda d: int(d.name[1:]),
+        )
+        for v in versions:
+            w = v / 'weights' / 'best.pt'
+            if not w.exists():
+                continue
+            m = _yolo_version_map50(v)
+            label = v.name + (f'  (mAP@0.5 {m:.3f})' if m is not None else '')
+            out.append((label, str(w)))
+    else:  # SSDLite
+        ckpts = sorted(model_dir.glob('best_v*.pth'),
+                       key=lambda p: int(p.stem.split('_v')[1]))
+        for c in ckpts:
+            num = c.stem.split('_v')[1]
+            m = _ssd_version_map50(num)
+            label = f'v{num}' + (f'  (mAP@0.5 {m:.3f})' if m is not None else '')
+            out.append((label, str(c)))
+    return out
+
 
 def _best_yolo_weights(model_dir: Path) -> Path:
     """Return best.pt from the vN folder with the highest mAP@0.5 in results.csv.
@@ -92,29 +163,29 @@ def _compute_severity(x1: float, y1: float, x2: float, y2: float,
     return 'High'
 
 
-def load_model(model_type: ModelType, device: torch.device):
-    """Loads the trained model for the given type. Returns (model, backend) tuple."""
+def load_model(model_type: ModelType, device: torch.device,
+               weights: str | Path | None = None):
+    """Loads the trained model for the given type. Returns (model, backend).
+
+    weights: explicit path to a specific run's weights. When None, the best
+    version is auto-selected (highest mAP@0.5 for YOLO, latest for SSDLite),
+    preserving the previous behaviour. This is what powers UI version picking."""
     runs = PROJECT_ROOT / 'runs'
 
-    if model_type == 'YOLOv11n':
+    if model_type in ('YOLOv11n', 'YOLOv8n'):
         from ultralytics import YOLO
-        weights = _best_yolo_weights(runs / 'yolo11n')
-        if not weights.exists():
-            raise FileNotFoundError(f'YOLOv11n weights not found: {weights}')
-        return YOLO(str(weights)), 'yolo'
-
-    if model_type == 'YOLOv8n':
-        from ultralytics import YOLO
-        weights = _best_yolo_weights(runs / 'yolov8n')
-        if not weights.exists():
-            raise FileNotFoundError(f'YOLOv8n weights not found: {weights}')
-        return YOLO(str(weights)), 'yolo'
+        w = Path(weights) if weights else _best_yolo_weights(runs / MODEL_DIRS[model_type])
+        if not w.exists():
+            raise FileNotFoundError(f'{model_type} weights not found: {w}')
+        return YOLO(str(w)), 'yolo'
 
     if model_type == 'SSDLite':
         from models.ssdlite_detector import build_model
-        weights = _latest_torch_weights(runs / 'ssdlite')
+        w = Path(weights) if weights else _latest_torch_weights(runs / 'ssdlite')
+        if not w.exists():
+            raise FileNotFoundError(f'SSDLite weights not found: {w}')
         model = build_model(num_classes=6, pretrained=False).to(device)
-        ckpt = torch.load(str(weights), map_location=device)
+        ckpt = torch.load(str(w), map_location=device)
         model.load_state_dict(ckpt['model_state_dict'])
         model.eval()
         return model, 'torchvision'

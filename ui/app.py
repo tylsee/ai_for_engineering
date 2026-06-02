@@ -22,6 +22,7 @@ from inference import (
     CLASS_COLORS,
     Detection,
     draw_detections,
+    list_versions,
     load_model,
     run_inference,
 )
@@ -39,8 +40,8 @@ st.set_page_config(
 
 
 @st.cache_resource(show_spinner='Loading model weights…')
-def get_model(model_type: str):
-    return load_model(model_type, DEVICE)
+def get_model(model_type: str, weights: str | None):
+    return load_model(model_type, DEVICE, weights)
 
 
 def render_detection_table(detections: list[Detection]):
@@ -76,6 +77,18 @@ with st.sidebar:
         ['YOLOv11n', 'YOLOv8n', 'SSDLite'],
         help='YOLOv11n/v8n: anchor-free YOLO. SSDLite: anchor-based mobile model.'
     )
+
+    # Version picker — choose a specific trained run, or auto-best.
+    _versions = list_versions(model_choice)
+    _ver_idx = st.selectbox(
+        'Model version',
+        range(len(_versions)),
+        format_func=lambda i: _versions[i][0],
+        help='Test on a specific training run, or let "Best (auto)" pick the '
+             'highest-scoring version. Older versions remain selectable.'
+    )
+    selected_weights = _versions[_ver_idx][1]
+
     conf_thresh = st.slider('Confidence threshold', 0.1, 0.9, 0.25, 0.05)
     st.divider()
     st.markdown('**Classes detected:**')
@@ -102,7 +115,7 @@ with tab_image:
         image = Image.open(uploaded).convert('RGB')
 
         try:
-            model, backend = get_model(model_choice)
+            model, backend = get_model(model_choice, selected_weights)
         except FileNotFoundError as e:
             st.error(f'Model weights not found. Train the model first.\n\n{e}')
             st.stop()
