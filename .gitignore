@@ -1,12 +1,21 @@
 # ── Raw source datasets (GBs, stored on Google Drive)
 dataset/
 
-# ── Data/results bundles for Colab transfer (large, rebuilt on demand) ────────
-defect_dataset.zip
-runs_results.zip
+# ── Data/results bundles + any large zip (rebuilt on demand; never commit) ────
+# Covers defect_dataset.zip, defect_dataset-a4.zip, defect_dataset_v3.zip, runs_results.zip, etc.
+*.zip
 
 # ── Augmented images (generated output, recreated by scripts/02_augmentation.py)
 data/augmented/
+
+# ── v3 final dataset (large; distributed via defect_dataset_v3.zip, not git) ──
+# NOTE: data/ (v2 diagnostic) is intentionally tracked for label restore — left tracked on purpose.
+data_v3/
+
+# ── Empty/leftover folders + scratch capture files (safe to ignore) ──────────
+runs_kaggle/
+nb_eval.txt
+nb_outputs.txt
 
 # ── Pretrained base weights (auto-downloaded by Ultralytics on first run) 
 yolo11n.pt
@@ -41,6 +50,7 @@ notebooks/runs/
 
 # ── YOLO label cache files (auto-generated, machine-specific) ────────────────
 data/labels/*.cache
+*.cache
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/

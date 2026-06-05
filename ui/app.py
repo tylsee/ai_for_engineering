@@ -74,8 +74,10 @@ with st.sidebar:
     st.title('⚙️ Settings')
     model_choice = st.selectbox(
         'Detection model',
-        ['YOLOv11n', 'YOLOv8n', 'SSDLite'],
-        help='YOLOv11n/v8n: anchor-free YOLO. SSDLite: anchor-based mobile model.'
+        ['YOLOv11s', 'YOLOv8s', 'YOLOv11n', 'YOLOv8n', 'SSDLite'],
+        help='YOLOv11s/v8s: final v3 small models (named-stage runs; baseline_640 by default). '
+             'YOLOv11n/v8n: legacy nano baseline kept for the report before/after. '
+             'SSDLite: anchor-based mobile model.'
     )
 
     # Version picker — choose a specific trained run, or auto-best.
@@ -153,7 +155,7 @@ with tab_compare:
         if img_path.exists():
             st.image(str(img_path), use_container_width=True)
     else:
-        st.info('Run `notebooks/03_evaluation.ipynb` to generate comparison results.')
+        st.info('Run Part 3 of `notebooks/local_train_evaluate.ipynb` to generate comparison results.')
 
     run_log = PROJECT_ROOT / 'runs' / 'run_log.csv'
     if run_log.exists():
@@ -187,9 +189,15 @@ Low: < 5% | Medium: 5–20% | High: > 20%
 ```
 
 ### Models
-| Model | Architecture | Backbone |
-|-------|-------------|---------|
-| YOLOv11n | One-stage anchor-free | CSPDarkNet (COCO) |
-| YOLOv8n | One-stage anchor-free | CSPDarkNet (COCO) |
-| SSDLite | One-stage anchor-based | MobileNetV3-Large (ImageNet) |
+| Model | Architecture | Backbone | Role |
+|-------|-------------|---------|------|
+| YOLOv11s | One-stage anchor-free | CSPDarkNet (COCO) | Final v3 primary |
+| YOLOv8s | One-stage anchor-free | CSPDarkNet (COCO) | Final v3 comparison |
+| SSDLite | One-stage anchor-based | MobileNetV3-Large (ImageNet) | Mobile/edge baseline |
+| RT-DETR | Transformer (NMS-free) | ResNet (COCO) | Architecture diversity |
+| YOLOv11n / YOLOv8n | One-stage anchor-free | CSPDarkNet (COCO) | Legacy nano (report before/after) |
+
+The final comparison uses the **small** models (YOLOv11s, YOLOv8s) plus SSDLite and RT-DETR for
+architecture diversity. The default YOLO weights are the `baseline_640` stage; a 768 fine-tune was
+tested but did not improve validation mAP, so it is kept only as an optional ablation.
 """)

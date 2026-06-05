@@ -1,0 +1,6 @@
+- YOLOv11s baseline_640: val mAP@0.5=0.4610 mAP@0.5:0.95=0.2529 (imgsz=640, weights=/kaggle/working/runs/yolo11s/baseline_640/weights/best.pt)
+- YOLOv11s finetune_768: val mAP@0.5=0.4411 mAP@0.5:0.95=0.2425 (imgsz=768, weights=/kaggle/working/runs/yolo11s/finetune_768/weights/best.pt)
+  -> YOLOv11s 768 fine-tune did not improve over 640 (val mAP@0.5 0.4411 vs 0.4610)
+- YOLOv8s baseline_640: val mAP@0.5=0.4635 mAP@0.5:0.95=0.2393 (imgsz=640, weights=/kaggle/working/runs/yolov8s/baseline_640/weights/best.pt)
+- YOLOv8s finetune_768: val mAP@0.5=0.4517 mAP@0.5:0.95=0.2344 (imgsz=768, weights=/kaggle/working/runs/yolov8s/finetune_768/weights/best.pt)
+  -> YOLOv8s 768 fine-tune did not improve over 640 (val mAP@0.5 0.4517 vs 0.4635)

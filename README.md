@@ -1,59 +1,96 @@
 # COS40007 — AI-Based Structural Defect Detection
 
-Detect and localise structural defects in infrastructure images using object detection models.
+Detect and localise structural defects in infrastructure images using **object detection** (bounding
+boxes, not image classification).
 
-**5 defect classes:** cracks · spalling · corrosion · potholes · paint degradation
-**3 models compared:** YOLOv11n · YOLOv8n · SSDLite320-MobileNetV3
-**Dataset:** 6,422 labelled images · 10,000 boxes · perfectly balanced (2,000 boxes/class)
+**5 defect classes:** `cracks` · `spalling` · `corrosion` · `potholes` · `paint_degradation`
+
+**Models compared (small models only):**
+- **YOLOv11s** — one-stage anchor-free CNN (primary)
+- **YOLOv8s** — one-stage anchor-free CNN (generation comparison)
+- **SSDLite320-MobileNetV3** — anchor-based mobile/edge baseline
+- **RT-DETR (rtdetr-l)** — end-to-end transformer (architecture diversity)
+
+All use transfer learning from pre-trained weights. **Medium/large variants (`m`/`l`/`x`) are
+deliberately excluded** — the comparison is scoped to small detectors.
 
 ---
 
-## Quick Start
+## Dataset
 
-### Option A — Google Colab (recommended)
+The final dataset is **v3** (in `data_v3/`). v2 (in `data/`) is kept as a diagnostic baseline for
+the report's before/after story. v3 was rebuilt from cleaner sources with corrosion aspect-ratio
+filtering and train-only weak-class crop augmentation, then a targeted cleanup of mislabeled and
+unlearnable images.
 
-Local training is slow on a weak GPU. The all-in-one notebook trains + evaluates everything
-in one "Run all", and saves results back to Drive.
+| Stage | Images | Boxes | Notes |
+|-------|--------|-------|-------|
+| v2 (`data/`, diagnostic) | 4,694 | 9,015 | real localized boxes, 1.01x balance, leak-free |
+| v3 (`data_v3/`, final) | ~5,200 | ~13,000 | cleaner sources + crop-aug; train oversampled toward weak classes |
 
-1. **Rebuild + zip the data** (locally):
-   ```bash
-   python scripts/01_reorganize_data.py     # rebuild data/ (only if sources changed)
-   ```
-   then create `defect_dataset.zip` from `data/` (archive root must contain `data/`).
-2. **Upload** `defect_dataset.zip` to Google Drive at `MyDrive/COS40007/defect_dataset.zip`.
-3. Open **`notebooks/colab_train_evaluate.ipynb`** in Colab → **Runtime → Change runtime type → T4 GPU**.
-4. **Runtime → Run all.** The notebook mounts Drive, copies + unzips the data locally, trains
-   YOLOv11n + YOLOv8n + SSDLite, evaluates on the test set, and writes
-   `runs_results.zip` (weights + charts) back to `MyDrive/COS40007/`.
-5. Download `runs_results.zip`, unzip into your local `runs/`, then run the dashboard (Option B step 4).
-
-> The notebook is self-contained — it needs only the data zip (the SSDLite model is inlined).
-> It auto-scales batch size to the GPU and also runs locally if you open it outside Colab.
-
-### Option B — Local Device
-
-**Requirements:** Python 3.10+, CUDA GPU recommended (CPU works but training is very slow)
+Built by `scripts/01_reorganize_data.py` (collect → perceptual-hash dedup → balance → leak-free split,
+cleaning at source). Rebuild v3 with:
 
 ```bash
-# 1. Clone the repo
-git clone https://github.com/tylsee/ai_for_engineering.git
-cd ai_for_engineering
+python scripts/01_reorganize_data.py --out data_v3
+python scripts/verify_rebuild.py --data data_v3
+```
 
-# 2. Install dependencies
-#    If you have an NVIDIA GPU, install PyTorch with CUDA first:
+See `CLAUDE.md` (Dataset v3 section) and `docs/dataset_cleaning_report.md` for the full pipeline.
+
+---
+
+## Training workflow (default: `baseline_640`)
+
+The default YOLO workflow is **`baseline_640` only** (640 px, 110 epochs, AdamW, cosine LR).
+
+A 768-px fine-tune stage was implemented and tested on both v2 and v3; it **did not improve
+validation mAP** (v3: finetune_768 ≈ 0.44 vs baseline_640 ≈ 0.46), so it is **disabled by default**
+(`RUN_FINETUNE_768 = False`) and kept only as an optional ablation. Higher resolution was not the
+bottleneck — the remaining limitation is weak-class data quality (cracks, corrosion,
+paint_degradation). See `docs/weak_class_next_steps.md`.
+
+Order: build/verify `data_v3` → train **YOLOv11s** `baseline_640` → train **YOLOv8s** `baseline_640`
+→ (optional) SSDLite + RT-DETR → score the **test set once** for the final comparison.
+
+### Run it
+
+The three all-in-one notebooks share the same training/eval cells (inlined from `scripts/` by
+`scripts/update_training_notebooks.py`); enable one model per session via the `RUN_*` switches in
+Part 2.1:
+
+```bash
+jupyter notebook notebooks/local_train_evaluate.ipynb     # local (set QUICK_TEST=True for a 3-epoch smoke test)
+# notebooks/colab_train_evaluate.ipynb                     # Google Colab T4
+# notebooks/kaggle_train_evaluate.ipynb                    # Kaggle T4
+```
+
+The local GTX 1650 (4 GB) is only for the data pipeline and quick checks — run real training on a
+Kaggle/Colab T4. Upload `defect_dataset_v3.zip` (built by `scripts/zip_data.py --src data_v3`) as the
+training data.
+
+**Records (kept separate):** `runs/experiment_tracker.csv` = validation per stage;
+`runs/model_comparison.csv` = final test only.
+
+---
+
+## Quick Start (local)
+
+```bash
+# 1. (NVIDIA GPU) install PyTorch with CUDA first, then the rest
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-#    Then install everything else:
 pip install -r requirements.txt
 
-# 3. (If data/ changed) rebuild it; otherwise it is already in the repo
-python scripts/01_reorganize_data.py
+# 2. (only if sources changed) rebuild the dataset
+python scripts/01_reorganize_data.py --out data_v3
 
-# 4. Train all 3 models (auto-versioned into runs/)
-python scripts/train_all.py
-#    ...or one at a time:
-python scripts/train_all.py --model yolo11n
+# 3. quick pipeline sanity check (~10s)
+python scripts/smoke_test.py
 
-# 5. Run the Streamlit dashboard
+# 4. train + evaluate (all-in-one notebook)
+jupyter notebook notebooks/local_train_evaluate.ipynb
+
+# 5. run the dashboard
 streamlit run ui/app.py
 ```
 
@@ -63,116 +100,45 @@ streamlit run ui/app.py
 
 ```
 ai_for_engineering/
-├── data/
-│   ├── images/{train,val,test}/   ← 6,422 labelled images (4493/964/965)
-│   ├── labels/{train,val,test}/   ← YOLO .txt annotations
-│   ├── data.yaml                  ← YOLO dataset config (rewritten at runtime)
-│   └── manifest.csv               ← per-source image counts
-├── dataset/                       ← raw source datasets (gitignored, on Drive)
+├── data/                 ← v2 dataset (diagnostic baseline)
+├── data_v3/              ← v3 dataset (FINAL — train on this)
+├── dataset/              ← raw source datasets (gitignored, on Drive)
+├── best/                 ← downloaded v3 Kaggle results (weights + curves)
 ├── models/
-│   └── ssdlite_detector.py        ← SSDLite320-MobileNetV3
+│   └── ssdlite_detector.py
 ├── notebooks/
-│   ├── colab_train_evaluate.ipynb ← ALL-IN-ONE for Colab (start here on Colab)
-│   ├── 01_data_preprocessing.ipynb
-│   ├── 02_training.ipynb
-│   └── 03_evaluation.ipynb
-├── scripts/
-│   ├── 01_reorganize_data.py      ← rebuilds data/ from raw datasets (dedup+balance+split)
-│   ├── 02_augmentation.py         ← Albumentations pipeline
-│   ├── train_all.py               ← train all 3 models locally
-│   ├── smoke_test.py              ← quick pipeline check (~10 sec)
-│   └── download_datasets.py       ← download raw datasets from Google Drive
-├── runs/
-│   ├── yolo11n/v1/                ← trained weights + metrics (auto-versioned)
-│   ├── run_log.csv                ← all training runs logged here
-│   └── *.png                      ← EDA + evaluation charts
+│   ├── local_train_evaluate.ipynb    ← all-in-one (local)
+│   ├── colab_train_evaluate.ipynb    ← all-in-one (Colab T4)
+│   ├── kaggle_train_evaluate.ipynb   ← all-in-one (Kaggle T4)
+│   └── rtdetr_addon.py               ← source of the optional RT-DETR cell
+├── scripts/              ← dataset build/repair/verify + training + notebook generator
 ├── ui/
-│   ├── app.py                     ← Streamlit dashboard (with model-version selector)
-│   └── inference.py               ← inference helpers
-├── weights/                       ← COCO-pretrained YOLO base weights
+│   ├── app.py            ← Streamlit dashboard (model + version selector)
+│   └── inference.py      ← inference helpers
+├── runs/                 ← training outputs, EDA charts, logs (nano baseline + audit)
+├── weights/              ← COCO-pretrained base weights
+├── docs/                 ← reports, rationale, cleanup plan
+├── README.md
+├── CLAUDE.md
 └── requirements.txt
 ```
 
 ---
 
-## Dataset
-
-| Split | Images | Labels |
-|-------|--------|--------|
-| train | 4,493 | 4,493 |
-| val | 964 | 964 |
-| test | 965 | 965 |
-| **Total** | **6,422** | **6,422** |
-
-**Bounding-box distribution (perfectly balanced — 2,000 boxes/class, ratio 1.00x):**
-
-| Class | Boxes | Source |
-|-------|-------|--------|
-| cracks | 2,000 | wall-crack + road-damage (real per-object boxes) |
-| spalling | 2,000 | Roboflow spalling / spalling2 / spalling3 (real boxes) |
-| corrosion | 2,000 | Roboflow Corrosion (real boxes) |
-| potholes | 2,000 | road-damage + Roboflow pothole sets (real boxes) |
-| paint_degradation | 2,000 | Roboflow paint-degradation (real boxes) |
-
-Built by `scripts/01_reorganize_data.py`: collect → perceptual a-hash dedup (2,023 dupes
-removed) → balance to 2,000 boxes/class → stratified, leak-free 70/15/15 split.
-
----
-
-## Training Options
-
-```bash
-# Train all 3 models sequentially (local)
-python scripts/train_all.py
-
-# Train a specific model only
-python scripts/train_all.py --model yolo11n
-python scripts/train_all.py --model yolov8n
-python scripts/train_all.py --model ssdlite
-```
-
-Each run auto-increments a version: `runs/yolo11n/v1/`, `v2/`, etc. Results are appended to
-`runs/run_log.csv` — no previous runs are overwritten. Ultralytics prints a live progress
-bar to the terminal during training.
-
----
-
-## Run the Dashboard
+## Dashboard
 
 ```bash
 streamlit run ui/app.py
 ```
 
-Upload an image → see bounding boxes, class labels, confidence scores, and severity estimates.
-The sidebar lets you pick which trained model version to test on.
+Upload an image → bounding boxes, class labels, confidence, and severity
+(`area% = bbox_area / image_area × 100`; Low <5%, Medium 5–20%, High >20%). The sidebar selects the
+model (YOLOv11s/YOLOv8s small, YOLOv11n/v8n legacy nano, SSDLite) and the specific trained run.
 
 ---
 
-## Quick Sanity Check
+## Evaluation
 
-Before a long training run, verify the pipeline end-to-end in ~10 seconds:
-
-```bash
-python scripts/smoke_test.py
-```
-
----
-
-## Results
-
-Final models are trained on Colab on the balanced 6,422-image dataset; run
-`notebooks/colab_train_evaluate.ipynb` (or `notebooks/03_evaluation.ipynb` locally) to
-regenerate `runs/model_comparison.csv` and the per-class / severity charts.
-
----
-
-## Dependencies
-
-```bash
-# NVIDIA GPU (recommended)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-pip install -r requirements.txt
-
-# CPU only
-pip install -r requirements.txt
-```
+mAP@0.5, mAP@0.5:0.95, per-class AP, Precision/Recall/F1, confusion matrices, FPS, and model size.
+Validation goes to `runs/experiment_tracker.csv`; the test set is scored once into
+`runs/model_comparison.csv`. Per-class results motivate the v3 weak-class work.

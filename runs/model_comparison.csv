@@ -1,0 +1,3 @@
+dataset_version,model,chosen_stage,imgsz,stage_category,test_mAP50,test_mAP50_95,precision,recall,f1,fps,size_MB,weights
+v3,YOLOv11s,baseline_640,640,fair baseline (640),0.4774,0.2625,0.5493,0.4688,0.5058,48.0,19.2,runs\yolo11s\baseline_640\weights\best.pt
+v3,YOLOv8s,baseline_640,640,fair baseline (640),0.4714,0.2453,0.5854,0.4424,0.5039,62.6,22.5,runs\yolov8s\baseline_640\weights\best.pt

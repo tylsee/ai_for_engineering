@@ -27,14 +27,19 @@ CLASS_COLORS = [
     (155, 89,182),    # purple — paint_degradation
 ]
 
-ModelType = Literal['YOLOv11n', 'YOLOv8n', 'SSDLite']
+ModelType = Literal['YOLOv11s', 'YOLOv8s', 'YOLOv11n', 'YOLOv8n', 'SSDLite']
 
 # Maps the UI model name to its runs/ subfolder.
 MODEL_DIRS: dict[str, str] = {
-    'YOLOv11n': 'yolo11n',
-    'YOLOv8n':  'yolov8n',
+    'YOLOv11s': 'yolo11s',   # v3 small model — named-stage folder structure
+    'YOLOv8s':  'yolov8s',   # v3 small model — named-stage folder structure
+    'YOLOv11n': 'yolo11n',   # legacy nano — kept for old-data baseline comparison
+    'YOLOv8n':  'yolov8n',   # legacy nano — kept for old-data baseline comparison
     'SSDLite':  'ssdlite',
 }
+
+# Named-stage models (v3): folders are 'baseline_640', 'finetune_768', not 'v1','v2',...
+_NAMED_STAGE_MODELS = {'YOLOv11s', 'YOLOv8s'}
 
 
 def _yolo_version_map50(version_dir: Path) -> float | None:
@@ -68,17 +73,33 @@ def _ssd_version_map50(version_num: str) -> float | None:
     return None
 
 
+def _named_stage_map50(stage_dir: Path) -> float | None:
+    """mAP@0.5 from a named-stage run's results.csv (e.g. baseline_640/)."""
+    return _yolo_version_map50(stage_dir)
+
+
 def list_versions(model_type: ModelType) -> list[tuple[str, str | None]]:
     """Returns [(label, weights_path_or_None)] for the UI version dropdown.
     The first entry is always ('Best (auto)', None), which defers to the
     automatic best-version selection in load_model(). Subsequent entries are
-    concrete trained runs (newest last), annotated with mAP@0.5 when known."""
+    concrete trained runs, annotated with mAP@0.5 when known."""
     out: list[tuple[str, str | None]] = [('Best (auto)', None)]
     model_dir = PROJECT_ROOT / 'runs' / MODEL_DIRS[model_type]
     if not model_dir.exists():
         return out
 
-    if model_type in ('YOLOv11n', 'YOLOv8n'):
+    if model_type in _NAMED_STAGE_MODELS:
+        # v3 small models: named stages baseline_640 (default), finetune_768 (ablation)
+        for stage_name in ('baseline_640', 'finetune_768'):
+            d = model_dir / stage_name
+            w = d / 'weights' / 'best.pt'
+            if not w.exists():
+                continue
+            m = _named_stage_map50(d)
+            suffix = '  (mAP@0.5 %.3f)' % m if m is not None else ''
+            tag = '' if stage_name == 'baseline_640' else '  [ablation]'
+            out.append((stage_name + suffix + tag, str(w)))
+    elif model_type in ('YOLOv11n', 'YOLOv8n'):
         versions = sorted(
             [d for d in model_dir.iterdir() if d.is_dir() and d.name.startswith('v')],
             key=lambda d: int(d.name[1:]),
@@ -102,8 +123,19 @@ def list_versions(model_type: ModelType) -> list[tuple[str, str | None]]:
 
 
 def _best_yolo_weights(model_dir: Path) -> Path:
-    """Return best.pt from the vN folder with the highest mAP@0.5 in results.csv.
-    Falls back to the highest-numbered version if no results.csv has data."""
+    """Return best.pt for a YOLO model directory.
+
+    Named-stage models (YOLOv11s/YOLOv8s, v3): returns baseline_640/weights/best.pt.
+    finetune_768 is excluded from auto-selection — it regressed on v3 validation.
+    Legacy models (YOLOv11n/YOLOv8n): returns best.pt from the vN folder with the
+    highest mAP@0.5 in results.csv.
+    """
+    # Named-stage (v3 small models): always prefer baseline_640
+    baseline = model_dir / 'baseline_640' / 'weights' / 'best.pt'
+    if baseline.exists():
+        return baseline
+
+    # Legacy vN structure
     import csv as _csv
     versions = sorted(
         [d for d in model_dir.iterdir() if d.is_dir() and d.name.startswith('v')],
@@ -172,7 +204,7 @@ def load_model(model_type: ModelType, device: torch.device,
     preserving the previous behaviour. This is what powers UI version picking."""
     runs = PROJECT_ROOT / 'runs'
 
-    if model_type in ('YOLOv11n', 'YOLOv8n'):
+    if model_type in ('YOLOv11s', 'YOLOv8s', 'YOLOv11n', 'YOLOv8n'):
         from ultralytics import YOLO
         w = Path(weights) if weights else _best_yolo_weights(runs / MODEL_DIRS[model_type])
         if not w.exists():

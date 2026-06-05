@@ -1,0 +1,5 @@
+dataset_version,model,stage,run_dir,imgsz,epochs_planned,optimizer,lr0,patience,val_mAP50,val_mAP50_95,precision,recall,comments
+v3,YOLOv11s,baseline_640,runs\yolo11s\baseline_640,640,110,AdamW,0.001,25,0.461,0.2529,0.5833,0.4375,
+v3,YOLOv11s,finetune_768,runs\yolo11s\finetune_768,768,40,AdamW,0.0002,12,0.4411,0.2425,0.5415,0.4502,
+v3,YOLOv8s,baseline_640,runs\yolov8s\baseline_640,640,110,AdamW,0.001,25,0.4635,0.2393,0.5785,0.443,
+v3,YOLOv8s,finetune_768,runs\yolov8s\finetune_768,768,40,AdamW,0.0002,12,0.4517,0.2344,0.5293,0.4759,

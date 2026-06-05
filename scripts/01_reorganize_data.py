@@ -57,7 +57,45 @@ CLASSES = ['cracks', 'spalling', 'corrosion', 'potholes', 'paint_degradation']
 IMAGE_EXTS = ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.webp']
 IMG_EXT_SET = {e.lstrip('*') for e in IMAGE_EXTS}
 
-TARGET_PER_CLASS = 2000          # cap per class, measured in bounding boxes
+# Per-class bbox targets. Quality-over-quantity: strong classes are capped below
+# the old flat 2000 to avoid padding with lower-grade boxes; paint is limited by
+# how much real-box data exists, so it lands lower and a MILD imbalance is accepted
+# (rubric needs only >=200/class; mild imbalance is fine if not extreme).
+DEFAULT_TARGET = 1800
+TARGET_PER_CLASS = {
+    'cracks': 1800, 'spalling': 1800, 'corrosion': 1800,
+    'potholes': 1800, 'paint_degradation': 1800,   # paint capped by source supply -> lands lower
+}
+
+# "Bigger box = better" rebuild (4 Jun 2026, user-directed, POTHOLES ONLY):
+# potholes were 46.6% tiny (vs 6-14% for other classes) because road-damage adds many
+# small distant road potholes. We bias the pothole class toward large, clearly-visible
+# boxes by (a) sourcing v5 only from its all-big images, (b) filling the pothole target
+# biggest-box-first, and (c) DROPPING crack+pothole multi-class images whose potholes are
+# ALL tiny. Cracks/corrosion are inherently thin -> left untouched (their small boxes are
+# real defects). "Select-only": we never delete a box from a kept image's label file.
+POTHOLE_CID = 3
+TINY_POTHOLE_AREA = 0.005   # <0.5% of image area — distant/junk potholes to bias away from
+BIG_POTHOLE_AREA = 0.02     # >=2% of image area — "big, clear" potholes (v5-big image filter)
+
+# Cap noisy / ambiguous LEGACY sources (in boxes) so cleaner new sources dominate.
+# The old Roboflow paint-degradation mixed in faded road-markings -> reduce its share.
+SOURCE_BOX_CAP = {'paint_degradation': 700}
+
+# Phase-B fill priority (lower = consumed first). New clean real-box sources win;
+# legacy/noisier sources only top up to the target. corrosion_v2 and the old
+# Corrosion share a priority so they MIX (keeps image diversity).
+SOURCE_PRIORITY = {
+    'road_damage': 0, 'wall_crack': 0, 'dataset3': 1,
+    'corrosion_v2': 1, 'corrosion': 1,
+    'spalling': 1,
+    'pothole_big': 1, 'pothole_v5_big': 1, 'pothole_v5': 2,  # prefer BIG v1/V4 + v5-big; plain v5 unused
+    'paint_v2': 1, 'paint_v3': 1,        # real human boxes first
+    'paint_peeling': 4,                  # optional model-assisted paint (added later)
+    'paint_degradation': 6,              # OLD paint -> reduced top-up only
+}
+DEFAULT_PRIORITY = 3
+
 TRAIN_RATIO = 0.70
 VAL_RATIO = 0.15                  # test = remainder (0.15)
 SEED = 42
@@ -97,9 +135,58 @@ def _iter_images(directory: Path):
             yield p
 
 
+MIN_BOX_DIM = 0.003   # 0.3% of an image side; thinner boxes are Roboflow polygon->bbox
+                      # export artifacts (w=0/h=0 or AR in the thousands). Clamp/drop them.
+MAX_AR = 50.0         # drop boxes more extreme than 50:1 (or 1:50) — full-width 2px
+                      # slivers from polygon exports, not real defects. Keeps genuinely
+                      # elongated cracks/rust (AR up to 50) which are legitimate.
+CORROSION_MAX_AR = 12.0  # v3: drop corrosion (class 2) boxes more elongated than 12:1 — extreme
+                         # axis-aligned rust-streak outliers. Removes AR>12 outliers (does NOT
+                         # guarantee a lower p95). Cracks stay thin (their AR is legitimate).
+
+
+def _clean_box(cx: float, cy: float, w: float, h: float):
+    """Drop degenerate boxes (w/h<=0) and extreme-AR export slivers (>MAX_AR);
+    clamp thin slivers to MIN_BOX_DIM and keep the box inside [0,1].
+    Returns cleaned (cx,cy,w,h) or None to drop."""
+    if w <= 0 or h <= 0:
+        return None
+    w = min(max(w, MIN_BOX_DIM), 1.0)
+    h = min(max(h, MIN_BOX_DIM), 1.0)
+    ar = w / h
+    if ar > MAX_AR or ar < 1.0 / MAX_AR:
+        return None
+    cx = min(max(cx, w / 2), 1 - w / 2)
+    cy = min(max(cy, h / 2), 1 - h / 2)
+    return cx, cy, w, h
+
+
+def _filter_class_ar(items: list[Item], cid: int, max_ar: float):
+    """Drop boxes of class `cid` whose aspect ratio is more extreme than max_ar:1 (or 1:max_ar).
+    An image with no boxes left is dropped. Returns (items, n_boxes_dropped, n_images_dropped)."""
+    out, boxes_dropped, imgs_dropped = [], 0, 0
+    for it in items:
+        kept = []
+        for ln in it.lines:
+            p = ln.split()
+            if int(p[0]) == cid:
+                w, h = float(p[3]), float(p[4])
+                ar = (w / h) if h > 0 else max_ar + 1
+                if ar > max_ar or ar < 1.0 / max_ar:
+                    boxes_dropped += 1
+                    continue
+            kept.append(ln)
+        if kept:
+            it.lines = kept
+            out.append(it)
+        else:
+            imgs_dropped += 1
+    return out, boxes_dropped, imgs_dropped
+
+
 def _read_label(lbl: Path, keep_remap: dict[int, int]) -> list[str]:
-    """Reads a YOLO label file, keeping only classes in keep_remap and
-    remapping their ids to the target space. Returns [] if nothing kept."""
+    """Reads a YOLO label file, keeping only classes in keep_remap, remapping their
+    ids to the target space, and cleaning degenerate/sliver boxes. [] if nothing kept."""
     if not lbl.exists():
         return []
     out = []
@@ -108,8 +195,17 @@ def _read_label(lbl: Path, keep_remap: dict[int, int]) -> list[str]:
         if len(parts) < 5:
             continue
         cls = int(float(parts[0]))
-        if cls in keep_remap:
-            out.append(f"{keep_remap[cls]} {' '.join(parts[1:5])}\n")
+        if cls not in keep_remap:
+            continue
+        try:
+            cx, cy, w, h = map(float, parts[1:5])
+        except ValueError:
+            continue
+        cleaned = _clean_box(cx, cy, w, h)
+        if cleaned is None:
+            continue
+        cx, cy, w, h = cleaned
+        out.append(f"{keep_remap[cls]} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}\n")
     return out
 
 
@@ -123,6 +219,16 @@ def _roboflow_items(folder: Path, keep_remap: dict[int, int], source: str) -> li
             lines = _read_label(lbl_dir / (img.stem + '.txt'), keep_remap)
             if lines:
                 items.append(Item(img, lines, source))
+    return items
+
+
+def _flat_items(img_dir: Path, lbl_dir: Path, keep_remap: dict[int, int], source: str) -> list[Item]:
+    """Reads a flat (images/ + labels/) YOLO dataset with no split subfolders."""
+    items = []
+    for img in _iter_images(img_dir):
+        lines = _read_label(lbl_dir / (img.stem + '.txt'), keep_remap)
+        if lines:
+            items.append(Item(img, lines, source))
     return items
 
 
@@ -156,6 +262,15 @@ def process_paint_degradation() -> list[Item]:
     return _roboflow_items(DATASET_DIR / 'paint-degradation', {0: 4}, 'paint_degradation')
 
 
+def process_dataset3() -> list[Item]:
+    """Dataset3 (Roboflow 'building-damage-insurance', nc=10). Keep only our classes:
+    crack(2) + stairstep_crack(8) -> cracks(0); peeling_paint(6) -> paint(4). Other
+    classes (mold/damp/dampness/stain/water_seepage) are dropped. Added 4 Jun to
+    replace the deleted road-damage source: supplies cracks (3,450 boxes) and restores
+    MULTI-CLASS images (crack+peeling) required by the rubric."""
+    return _roboflow_items(DATASET_DIR / 'Dataset3', {2: 0, 8: 0, 6: 4}, 'dataset3')
+
+
 def process_corrosion() -> list[Item]:
     """Corrosion: Corrosion(0) -> corrosion(2). Real boxes."""
     return _roboflow_items(DATASET_DIR / 'Corrosion', {0: 2}, 'corrosion')
@@ -171,16 +286,85 @@ def process_spalling() -> list[Item]:
     return items
 
 
-def process_potholes_roboflow() -> list[Item]:
-    """
-    potholesv1 / potholesV3 / PotholesV4: pothole(0) -> potholes(3).
-    PotholesV2 is a CHESS dataset where 'pothole' is class 6 — keep only class 6.
-    Heavy cross-folder duplication; dedup() removes the copies afterwards.
-    """
+def process_potholes_big() -> list[Item]:
+    """potholesv1 + PotholesV4 (Roboflow YOLO): pothole(0) -> potholes(3).
+    Manually verified 4 Jun: these carry LARGER, clearly-visible potholes
+    (median box ~2.1% of image, only ~18% tiny) vs potholesv5's distant-pothole
+    skew (~38% tiny). v1 and V4 are near-identical uploads — dedup collapses them.
+    Preferred over v5 to lift the pothole size distribution. (PotholesV2 chess +
+    potholesV3 were deleted by the user.)"""
     items = []
-    for name in ('potholesv1', 'potholesV3', 'PotholesV4'):
-        items += _roboflow_items(DATASET_DIR / name, {0: 3}, 'pothole_rf')
-    items += _roboflow_items(DATASET_DIR / 'PotholesV2', {6: 3}, 'pothole_rf')
+    for name in ('potholesv1', 'PotholesV4'):
+        items += _roboflow_items(DATASET_DIR / name, {0: 3}, 'pothole_big')
+    return items
+
+
+def process_potholes_v5() -> list[Item]:
+    """potholesv5 (Roboflow YOLO, train+valid): pothole(0) -> potholes(3). Real
+    boxes; replaces the dup-heavy tiny v1/V2/V3/V4 sources. NOTE: superseded by
+    process_potholes_v5_big() in collect_items() for the big-pothole-bias rebuild."""
+    return _roboflow_items(DATASET_DIR / 'potholesv5', {0: 3}, 'pothole_v5')
+
+
+def process_potholes_v5_big() -> list[Item]:
+    """potholesv5 restricted to images where EVERY pothole box is BIG (>=2% of image
+    area). Real boxes, labels kept INTACT (no box dropping — 'select-only'). The median
+    v5 box is small, but ~1,163 v5 images are all-big and clean; using only those biases
+    the pothole class toward large, clearly-visible potholes (user-directed 4 Jun 2026)
+    without ever pulling in a tiny/distant v5 box. Replaces the plain v5 top-up."""
+    items = []
+    for it in _roboflow_items(DATASET_DIR / 'potholesv5', {0: 3}, 'pothole_v5_big'):
+        areas = [float(ln.split()[3]) * float(ln.split()[4]) for ln in it.lines]
+        if areas and min(areas) >= BIG_POTHOLE_AREA:   # all boxes big -> keep image whole
+            items.append(it)
+    return items
+
+
+def process_corrosion_v2() -> list[Item]:
+    """corrosionv2 'corrosion detect' (flat YOLO): corrosion(1) -> corrosion(2).
+    Real boxes, several tight boxes per image. Mixed with the older Corrosion set
+    (same priority) to combine clean labels with broader image diversity."""
+    base = DATASET_DIR / 'corrosionv2' / 'corrosion detect'
+    return _flat_items(base / 'images', base / 'labels', {0: 2, 1: 2}, 'corrosion_v2')
+
+
+def process_paint_v3() -> list[Item]:
+    """paintdegradationv3 (Roboflow YOLO): 'peel paint'(0) -> paint_degradation(4).
+    Real boxes, on-topic peeling-paint imagery."""
+    return _roboflow_items(DATASET_DIR / 'paintdegradationv3', {0: 4}, 'paint_v3')
+
+
+def process_paint_v2() -> list[Item]:
+    """paintdegradationv2 (Roboflow COCO export, flat train/): real boxes.
+    category 3 peeling -> paint(4); 1 crack -> cracks(0); 4 spalling -> spalling(1);
+    2 mold + 0 supercategory dropped. Multi-class images kept (rubric)."""
+    import json
+    base = DATASET_DIR / 'paintdegradationv2' / 'train'
+    jf = base / '_annotations.coco.json'
+    if not jf.exists():
+        return []
+    d = json.loads(jf.read_text())
+    cat_remap = {3: 4, 1: 0, 4: 1}                 # peeling->paint, crack->cracks, spalling->spalling
+    imgs = {im['id']: im for im in d['images']}
+    by_img: dict[int, list[str]] = defaultdict(list)
+    for a in d['annotations']:
+        cid = a['category_id']
+        if cid not in cat_remap:
+            continue
+        im = imgs[a['image_id']]
+        W, H = im['width'], im['height']
+        x, y, w, h = a['bbox']                      # COCO: x,y,w,h absolute pixels
+        cleaned = _clean_box((x + w / 2) / W, (y + h / 2) / H, w / W, h / H)
+        if cleaned is None:
+            continue
+        ccx, ccy, cw, ch = cleaned
+        by_img[a['image_id']].append(
+            f"{cat_remap[cid]} {ccx:.6f} {ccy:.6f} {cw:.6f} {ch:.6f}\n")
+    items = []
+    for img_id, lines in by_img.items():
+        p = base / imgs[img_id]['file_name']
+        if p.exists() and lines:
+            items.append(Item(p, lines, 'paint_v2'))
     return items
 
 
@@ -246,10 +430,11 @@ def dedup(items: list[Item]) -> tuple[list[Item], int]:
 
 # ── Balancing ───────────────────────────────────────────────────────────────
 
-def balance(items: list[Item], target: int) -> tuple[list[Item], Counter]:
-    """Cap each class at `target` bounding boxes. Multi-class images are kept
-    first (scarce + required by rubric), then single-class images top up each
-    class. A class with fewer than `target` boxes uses everything available."""
+def balance(items: list[Item], targets: dict[str, int]) -> tuple[list[Item], Counter]:
+    """Cap each class at its own bbox target (`targets[class_name]`). Multi-class
+    images are kept first (scarce + required by rubric); single-class images then
+    top up each class, consuming higher-priority (cleaner/newer) sources before
+    legacy ones. A class with fewer boxes than its target uses everything."""
     for it in items:
         it.classes = frozenset(it.bbox_class_counts)
 
@@ -257,24 +442,46 @@ def balance(items: list[Item], target: int) -> tuple[list[Item], Counter]:
     counts = Counter()
     selected: list[Item] = []
 
+    def _pothole_areas(it):
+        return [float(ln.split()[3]) * float(ln.split()[4])
+                for ln in it.lines if int(ln.split()[0]) == POTHOLE_CID]
+
     multi = [it for it in items if len(it.classes) > 1]
     single_by_cls: dict[int, list[Item]] = defaultdict(list)
     for it in items:
         if len(it.classes) == 1:
             single_by_cls[next(iter(it.classes))].append(it)
 
-    # Phase A — all multi-class images
+    # Phase A — multi-class images, EXCEPT crack+pothole images whose potholes are ALL
+    # tiny (<0.5%). Big-pothole bias: these all-tiny multi-class images are the bulk of
+    # the tiny-pothole share, so we drop them (their cracks backfill in Phase B). Multi-
+    # class images with a non-tiny pothole, and non-pothole multi-class (crack+peeling),
+    # are kept. Select-only: we drop whole images, never edit a kept image's labels.
     for it in multi:
+        pa = _pothole_areas(it)
+        if pa and max(pa) < TINY_POTHOLE_AREA:
+            continue   # all-tiny-pothole multi-class image -> drop
         selected.append(it)
         counts.update(it.bbox_class_counts)
 
-    # Phase B — top up each class with single-class images (rarest class first
-    # so scarce classes are filled before abundant ones compete for the budget)
+    # Phase B — top up each class with single-class images (rarest class first so
+    # scarce classes are filled before abundant ones compete for the budget). POTHOLES
+    # fill biggest-box-first (bias toward large, clear potholes), source priority as the
+    # tie-break; all other classes keep the source-priority fill (shuffled within tier).
     for cls in sorted(range(len(CLASSES)), key=lambda c: counts[c]):
+        tgt = targets.get(CLASSES[cls], DEFAULT_TARGET)
         pool = single_by_cls.get(cls, [])
         rng.shuffle(pool)
+        if cls == POTHOLE_CID:
+            # rank by the image's SMALLEST pothole box (desc): prefer images with no
+            # tiny boxes at all, so tiny single-class potholes are only used as a last
+            # resort once the big supply (v5-big + v1/V4) is exhausted.
+            pool.sort(key=lambda it: (-min(_pothole_areas(it)),
+                                      SOURCE_PRIORITY.get(it.source, DEFAULT_PRIORITY)))
+        else:
+            pool.sort(key=lambda it: SOURCE_PRIORITY.get(it.source, DEFAULT_PRIORITY))
         for it in pool:
-            if counts[cls] >= target:
+            if counts[cls] >= tgt:
                 break
             selected.append(it)
             counts[cls] += len(it.lines)
@@ -318,7 +525,7 @@ def clear_data_split_dirs():
             if d.exists():
                 shutil.rmtree(d)
             d.mkdir(parents=True, exist_ok=True)
-    print("  Cleared and recreated data/images/* and data/labels/*")
+    print(f"  Cleared and recreated {DATA_DIR.name}/images/* and {DATA_DIR.name}/labels/*")
 
 
 def save_splits(splits: dict[str, list[Item]]):
@@ -400,37 +607,75 @@ def verify_no_leakage(splits: dict[str, list[Item]]):
     return leaks == 0
 
 
+def _cap_source(items: list[Item]) -> list[Item]:
+    """Seeded truncation of any capped legacy source to its box budget, preserving
+    the original collect order (so dedup tie-breaks are unaffected)."""
+    if not ({it.source for it in items} & set(SOURCE_BOX_CAP)):
+        return items
+    rng = random.Random(SEED)
+    pool = list(items); rng.shuffle(pool)
+    budgets = defaultdict(int)
+    keep = set()
+    for it in pool:
+        cap = SOURCE_BOX_CAP.get(it.source)
+        if cap is not None:
+            if budgets[it.source] >= cap:
+                continue
+            budgets[it.source] += len(it.lines)
+        keep.add(id(it))
+    return [it for it in items if id(it) in keep]
+
+
 def collect_items(keep_proxies: bool) -> list[Item]:
     # Order matters: multi-class / real-box sources first so they win dedup ties.
     sources = [
         ("Road-Damage (cracks+potholes, multi-class)", process_road_damage),
         ("Wall-Crack (cracks)", process_wall_crack),
-        ("Corrosion (real boxes)", process_corrosion),
-        ("Paint-Degradation (real boxes)", process_paint_degradation),
-        ("Spalling + Spalling2 (real boxes)", process_spalling),
-        ("Potholes v1/V2/V3/V4 (real boxes, dup-heavy)", process_potholes_roboflow),
+        ("Dataset3 (crack+stairstep->cracks, peeling->paint, multi)", process_dataset3),
+        ("Corrosion-v2 (clean real boxes — v3: only corrosion source)", process_corrosion_v2),
+        ("Spalling + Spalling2 + Spalling3 (real boxes)", process_spalling),
+        ("Potholes-v1+V4 (big, clear potholes - preferred)", process_potholes_big),
+        ("Potholes-v5-BIG (>=2% boxes only; big-pothole bias)", process_potholes_v5_big),
+        ("Paint-v2 (COCO: peeling+crack+spalling real boxes)", process_paint_v2),
+        ("Paint-v3 (YOLO real peeling-paint boxes)", process_paint_v3),
     ]
+    # v3: old Corrosion/ and old paint-degradation/ are dropped (noisy/ambiguous). Their
+    # process_* functions are kept above for reference but no longer collected.
     if keep_proxies:
         sources.append(("Concrete-Structural (whole-image PROXY)", process_concrete_structural))
 
     items = []
     for label, fn in sources:
-        got = fn()
+        got = _cap_source(fn())
         n_box = sum(len(it.lines) for it in got)
-        print(f"  {label:<48}: {len(got):>5} imgs, {n_box:>6} boxes")
+        print(f"  {label:<52}: {len(got):>5} imgs, {n_box:>6} boxes")
         items += got
+    # v3: tighten corrosion geometry — drop extreme elongated rust-streak outliers (AR>12)
+    items, bd, idrop = _filter_class_ar(items, cid=2, max_ar=CORROSION_MAX_AR)
+    print(f"  corrosion AR>{CORROSION_MAX_AR:.0f} outlier filter{'':<26}: dropped {bd} boxes, {idrop} images")
     return items
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--target', type=int, default=TARGET_PER_CLASS,
-                    help='Max bounding boxes kept per class (default 2000)')
+    ap.add_argument('--target', type=int, default=None,
+                    help='Override: use this single bbox cap for ALL classes '
+                         '(default uses per-class TARGET_PER_CLASS)')
     ap.add_argument('--keep-proxies', action='store_true',
                     help='Also include concrete-structural whole-image proxy boxes')
+    ap.add_argument('--out', default='data',
+                    help='Output dataset dir under the project root (default: data). '
+                         'Use --out data_v3 to build v3 without overwriting v2 in data/.')
     args = ap.parse_args()
 
-    print("Clearing existing data/ ...")
+    global DATA_DIR
+    DATA_DIR = PROJECT_ROOT / args.out
+    print(f"Building dataset into: {DATA_DIR}")
+
+    targets = ({c: args.target for c in CLASSES} if args.target is not None
+               else dict(TARGET_PER_CLASS))
+
+    print(f"Clearing existing {DATA_DIR.name}/ ...")
     clear_data_split_dirs()
 
     print("\n=== 1. COLLECT (real-bbox sources) ===")
@@ -442,8 +687,8 @@ def main():
     items, removed = dedup(items)
     print(f"  removed {removed} duplicate/unreadable images -> {len(items)} unique")
 
-    print(f"\n=== 3. BALANCE (cap {args.target} boxes/class) ===")
-    selected, counts = balance(items, args.target)
+    print(f"\n=== 3. BALANCE (per-class targets: {targets}) ===")
+    selected, counts = balance(items, targets)
     print(f"  selected {len(selected)} images")
     for cid, name in enumerate(CLASSES):
         print(f"    {name:<18}: {counts[cid]:>6} boxes")

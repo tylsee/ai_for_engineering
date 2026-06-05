@@ -1,11 +1,6 @@
-path: C:/dev/ai_for_engineering/data
+path: c:/dev/ai_for_engineering/data
 train: images/train
 val: images/val
 test: images/test
 nc: 5
-names:
-- cracks
-- spalling
-- corrosion
-- potholes
-- paint_degradation
+names: ['cracks', 'spalling', 'corrosion', 'potholes', 'paint_degradation']

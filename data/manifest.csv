@@ -1,7 +1,11 @@
 source,total,train,val,test
-corrosion,1999,1399,300,300
-paint_degradation,1444,1010,217,217
-pothole_rf,427,302,61,64
-road_damage,918,646,139,133
-spalling,1292,904,194,194
-wall_crack,342,232,53,57
+corrosion,1070,754,155,161
+corrosion_v2,86,55,18,13
+dataset3,135,99,19,17
+paint_v2,166,111,31,24
+paint_v3,100,69,11,20
+pothole_big,605,406,97,102
+pothole_v5_big,329,242,45,42
+road_damage,642,446,103,93
+spalling,1161,813,174,174
+wall_crack,400,288,52,60
