@@ -16,7 +16,7 @@ AVAILABLE_MODELS = [
     "efficientdet_best.pth", "faster_rcnn_resnet18_best.pth", 
     "rt_detr_best.pt", "yolov11s_best.pt", "yolov8s_best.pt"
 ]
-RECOMMENDED_MODEL = "yolov8s_best.pt" 
+RECOMMENDED_MODEL = "yolov11s_best.pt" 
 
 class FacilitiesDashboard(ctk.CTk):
     def __init__(self):
