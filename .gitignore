@@ -1,78 +1,39 @@
-# ── Raw source datasets (GBs, stored on Google Drive)
-dataset/
-
-# ── Data/results bundles for Colab transfer (large, rebuilt on demand) ────────
-defect_dataset.zip
-runs_results.zip
-
-# ── Augmented images (generated output, recreated by scripts/02_augmentation.py)
-data/augmented/
-
-# ── Pretrained base weights (auto-downloaded by Ultralytics on first run) 
-yolo11n.pt
-yolov8n.pt
-*.onnx
-*.engine
-
-# ── Old model weights from abandoned architectures (too large for GitHub) 
-runs/resnet50/
-runs/efficientnet/
-
-# ── Incomplete / in-progress training runs (only push completed versions) ─────
-# Delete or rename these manually if a run is incomplete before pushing
-runs/yolo11n/v2/
-runs/yolov8n/v2/
-runs/ssdlite/best_v2.pth
-
-# ── last.pt checkpoints (only best.pt is needed by teammates) ─────────────────
-runs/**/weights/last.pt
-
-# ── YOLO per-epoch training batch previews (large, not useful in repo) ────────
-runs/**/train_batch*.jpg
-
-# ── Large training logs ───────────────────────────────────────────────────────
-runs/train_log.txt
-
-# ── YOLO inference/detection output (generated at runtime) ───────────────────
-runs/detect/
-
-# ── Notebook-generated run artifacts ─────────────────────────────────────────
-notebooks/runs/
-
-# ── YOLO label cache files (auto-generated, machine-specific) ────────────────
-data/labels/*.cache
-
-# ── Python ────────────────────────────────────────────────────────────────────
-__pycache__/
-*.py[cod]
-*.pyo
-.ipynb_checkpoints/
-*.egg-info/
-dist/
-build/
-
-# ── Virtual environments ──────────────────────────────────────────────────────
+# ==========================================
+# 1. PYTHON VIRTUAL ENVIRONMENT (DO NOT PUSH)
+# ==========================================
 venv/
 .venv/
 env/
-.env
+ENV/
 
-# ── Editor & OS ───────────────────────────────────────────────────────────────
-.vscode/
-.idea/
-*.swp
-*.swo
+# ==========================================
+# 2. FRAMEWORK CACHES & COMPILED FILES
+# ==========================================
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# ==========================================
+# 3. SYSTEM & IDE JUNK
+# ==========================================
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
 
-# ── Tool config (local only) ──────────────────────────────────────────────────
-.claude/
-.qodo/
+# ==========================================
+# 4. AI WEIGHT TRACKING CONFIGURATION
+# ==========================================
+# Step A: Globally ignore all model weight file types to prevent accident dumps
+*.pt
+*.pth
+*.onnx
+*.engine
 
-# ── Assignment brief (kept local only) ───────────────────────────────────────
-*.pdf
-
-# ── Secrets ───────────────────────────────────────────────────────────────────
-*.key
-secrets.json
-CLAUDE.md
+# Step B: Force Git to track and push your explicit models directory
+!models/
+!models/*.pt
+!models/*.pth
