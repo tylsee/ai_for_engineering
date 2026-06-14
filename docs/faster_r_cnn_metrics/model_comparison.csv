@@ -1,0 +1,4 @@
+Backbone Model,Parameters (M),File Size (MB),GPU Latency (ms),mAP@50
+ResNet-18 FPN (Our Selected),28.29M,108.1 MB,18.5 ms,65.48%
+ResNet-50 FPN (Baseline),41.30M,165.2 MB,~24.5 ms,~68.12% (Estimated)
+MobileNetV3 Large FPN,19.30M,78.4 MB,~11.2 ms,~58.30% (Estimated)
