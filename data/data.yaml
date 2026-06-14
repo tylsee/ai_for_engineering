@@ -1,4 +1,4 @@
-path: C:/dev/ai_for_engineering/data
+path: D:\.Adil\uni\SEM 5\AI in ENG\Final_Project\ai_for_engineering\data
 train: images/train
 val: images/val
 test: images/test

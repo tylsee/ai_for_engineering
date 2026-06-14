@@ -1,0 +1,6 @@
+﻿run_id,model,version,epochs,batch,imgsz,lr,map50,map50_95,precision,recall,notes
+yolo11n_v1,YOLOv11n,v1,100,8,640,1e-4,0.7557,0.6719,0.7507,0.7041,Norman  -  old dataset (3237 train imgs)
+yolov8n_v1,YOLOv8n,v1,100,8,640,1e-4,0.7477,0.6592,0.7792,0.6912,Norman  -  old dataset (3237 train imgs)
+yolo11s_smartcampus,YOLOv11s,smartcampus_640,110,16,640,1e-3,0.7799,0.5825,0.8250,0.7029,"Norman  -  Dataset 10 (3026 train imgs), AdamW, retrained with correct class order, weights at runs/yolov11s/smartcampus_640/"
+yolov8s_smartcampus,YOLOv8s,smartcampus_640,110,16,640,1e-3,0.7587,0.5472,0.7877,0.6863,"Norman  -  Dataset 10 (3026 train imgs), AdamW, retrained with correct class order, weights at runs/yolov8s/smartcampus_640/"
+yolov8n_v2,YOLOv8n,v2,100,16,640,1e-4,0.4368,0.2530,0.6850,0.3970,"Adil  -  Dataset 10, trained on Colab T4 (145 min), weights at runs/yolov8n/v2/"

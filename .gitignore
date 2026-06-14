@@ -37,3 +37,22 @@ Thumbs.db
 !models/
 !models/*.pt
 !models/*.pth
+
+# ==========================================
+# 5. LARGE DATA & GENERATED FILES
+# ==========================================
+# Emily's dataset (tracked separately, not in main repo)
+data_emily/
+
+# YOLO validation/training batch debug images (auto-generated, not needed)
+runs/**/train_batch*.jpg
+runs/**/val_batch*.jpg
+runs/**/labels.jpg
+runs/**/*.yaml
+
+# YOLO validation outputs from notebook runs (auto-generated)
+notebooks/runs/
+
+# Label cache files
+data/labels/*.cache
+data/*/labels.cache
