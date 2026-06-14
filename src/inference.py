@@ -44,7 +44,10 @@ class DefectModelWrapper:
                 self.model_type = "pytorch_effdet"
                 self.active_classes = {1: "corrosion", 2: "cracks", 3: "paint_degradation", 4: "potholes", 5: "spalling"}
                 from effdet import create_model, DetBenchPredict
-                net = create_model('tf_efficientdet_d0', pretrained=False, num_classes=5, image_size=(640, 640))
+                
+                # ---> FIXED: Changed num_classes=5 to num_classes=6 to match the checkpoint architecture <---
+                net = create_model('tf_efficientdet_d0', pretrained=False, num_classes=6, image_size=(640, 640))
+                
                 checkpoint = torch.load(path, map_location=self.device, weights_only=False)
                 if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
                     net.load_state_dict(checkpoint['model_state_dict'], strict=False)
