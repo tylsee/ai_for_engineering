@@ -34,7 +34,7 @@ The project is organized into modular directories for data, training, inference,
 1. Clone the repository to your local machine:
 
 ```bash
-git clone https://github.com/your-username/ai_for_engineering.git
+git clone https://github.com/tylsee/ai_for_engineering.git
 cd ai_for_engineering
 ```
 
@@ -61,8 +61,6 @@ pip install -r requirements.txt
 python app/main.py
 ```
 
-*(Note: If the app is built with Streamlit, run `streamlit run app/main.py` instead).*
-
 ### 2. Running Inference via CLI
 
 ```bash
@@ -71,9 +69,12 @@ python src/inference.py --source path/to/your/image.jpg --model models/yolov11s_
 
 ### 3. Training and Evaluation
 
-```bash
-jupyter notebook
-```
+All model training notebooks are located in the `notebooks/` directory:
+
+- `train_yolo8_yolo11.ipynb` – Training pipeline for YOLOv8s and YOLOv11s
+- `train_rtdetr.ipynb` – Training pipeline for RT-DETR
+- `train_faster_rcnn.ipynb` – Training pipeline for Faster R-CNN
+- `train_efficientdet.ipynb` – Training pipeline for EfficientDet
 
 Open `notebooks/evaluation.ipynb` to view the comparative analysis of model performances (mAP, inference speed, etc.).
 
