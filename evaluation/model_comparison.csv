@@ -1,0 +1,7 @@
+﻿Model,mAP@0.5,mAP@0.5:0.95,Precision,Recall,F1,Notes
+YOLOv11s,0.7799,0.5825,0.8250,0.7029,0.7591,Norman  -  Dataset 10 (3026 train imgs)
+YOLOv8s,0.7587,0.5472,0.7877,0.6863,0.7335,Norman  -  Dataset 10 (3026 train imgs)
+EfficientDet-D0,0.7311,0.4878,0.7986,0.7581,0.7767,Tyra  -  Dataset 10 (110 epochs)
+Faster R-CNN,0.6967,0.4054,0.4908,0.7554,0.5922,Amanda  -  Dataset 10
+RT-DETR-L,0.5800,0.3510,0.7420,,0.5800,Emily  -  Dataset 10
+YOLOv8n_v2,0.4368,0.2530,0.6850,0.3970,,"Adil  -  Dataset 10 (personal training run, 100 epochs on Colab T4)"
